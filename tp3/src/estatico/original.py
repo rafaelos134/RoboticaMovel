@@ -16,7 +16,263 @@ def Rz(theta):
                       [ np.sin(theta), np.cos(theta) , 0 ],
                       [ 0            , 0             , 1 ]])
 
-# debug do codigo
+
+
+# codigo de aluno no moodle
+
+class HokuyoSensorSim(object): 
+    _sim = None
+    
+    _base_name = "" 
+
+    _angles_lua = np.empty(0) 
+    _is_initialized_angles = False 
+    ANGLE_SIGNAL = 'signal.hokuyo_angle_data' 
+    
+    _base_obj = None 
+    _is_range_data = True
+    _vision_sensors_obj = []
+
+    def __init__(self, sim, base_name, is_range_data=True):
+        self._sim = sim
+        self._base_name = base_name
+        self._is_range_data = is_range_data
+
+        if "fastHokuyo" not in base_name:
+            raise ValueError(
+                f"ERR: fastHokuyo must be in the base object name. Ex: `/kobuki/fastHokuyo`"
+            )
+
+        self._base_obj = sim.getObject(base_name)
+        if self._base_obj == -1:
+            raise ValueError(
+                f"ERR: base_obj ({self._base_obj}) is not a valid name in the simulation"
+            )
+
+        self._vision_sensors_obj = [
+            sim.getObject(f'{base_name}/fastHokuyo_sensor1'),
+            sim.getObject(f'{base_name}/fastHokuyo_sensor2'),
+        ]
+
+        if any(obj == -1 for obj in self._vision_sensors_obj):
+            raise ValueError(
+                f"ERR: the _vision_sensors_obj names are not valid in the simulation"
+            )
+
+    def get_is_range_data(self) -> bool:
+        return self._is_range_data
+
+    def set_is_range_data(self, is_range_data: bool) -> None:
+        self._is_range_data = is_range_data
+
+    def _initialize_angles_from_lua(self):
+
+        # Essas variáveis agora são utilizadas apenas quando os valores do laser 
+        # não são desempacotados diretamente do sensor, como um fallback em caso de falha
+        angle_min = -120 * math.pi / 180
+        angle_increment = (240 / 684) * math.pi / 180
+        total_steps = 684
+        
+        for i in range(15):
+            try:
+                if self._vision_sensors_obj and self._vision_sensors_obj[0] != -1:
+                    self._sim.readVisionSensor(self._vision_sensors_obj[0]) 
+
+                angles_packed = self._sim.getBufferProperty(self._sim.handle_scene, self.ANGLE_SIGNAL, {'noError' : True})
+                
+                if angles_packed:
+                    self._angles_lua = np.array(self._sim.unpackFloatTable(angles_packed))
+                    self._is_initialized_angles = True
+                    print(f"Precise sensor angles read on attempt {i+1} ({self._angles_lua.size} laser beam readings)")
+                    return True
+                
+                time.sleep(0.01)
+
+            except Exception as e:
+                pass 
+                
+        self._angles_lua = np.arange(angle_min, angle_min + total_steps * angle_increment, angle_increment)
+        self._is_initialized_angles = True
+        print("ALERT: Communication via buffer property failed. Using approximation. Map may be blurred.")
+        return False
+
+    def getSensorData(self):
+        
+        if not self._is_initialized_angles:
+            self._initialize_angles_from_lua()
+        
+        sensor_data = []
+        angle_idx = 0
+        angles_to_use = self._angles_lua
+        
+        if angles_to_use.size == 0:
+            return np.empty((0, 2))
+        
+        for vision_sensor in self._vision_sensors_obj:
+            
+            result = self._sim.readVisionSensor(vision_sensor)
+            if not isinstance(result, (list, tuple)) or len(result) != 3: continue 
+                
+            r, t, u = result
+            if u:
+                for j in range(int(u[1])): 
+                    for k in range(int(u[0])): 
+                        w_idx = 2 + 4 * (j * int(u[0]) + k)
+                        v_dist = u[w_idx + 3] 
+                        if angle_idx < angles_to_use.size:
+                            current_angle = angles_to_use[angle_idx]
+                            sensor_data.append([current_angle, v_dist])
+                            angle_idx += 1
+                        else:
+                            break 
+                    if angle_idx >= angles_to_use.size: break
+
+        return np.array(sensor_data) if sensor_data else np.empty((0, 2))
+    
+def transform_laser_to_global(laser_data, robot_pos, robot_ori):
+
+    x_r, y_r = robot_pos[0], robot_pos[1]
+    theta_r = robot_ori[2]  # orientação em torno de z
+
+    global_points = []
+
+    
+
+    for ang, dist in laser_data:
+        if dist > 0.01 and dist < 5:
+            # coordenadas no robô
+            x_local = dist * np.cos(ang)
+            y_local = dist * np.sin(ang)
+
+            # transformação para global
+            x_global = x_r + x_local*np.cos(theta_r) - y_local*np.sin(theta_r)
+            y_global = y_r + x_local*np.sin(theta_r) + y_local*np.cos(theta_r)
+
+            global_points.append([x_global, y_global])
+
+    return global_points
+
+
+
+
+
+# verificar funcao
+def pixel_to_world(x_px, y_px, img_size=64, world_size=10):
+        scale = world_size / img_size
+        x_world = ((x_px - img_size/2) * scale)
+        y_world = (-(y_px - img_size/2) * scale) 
+        return x_world, y_world
+
+
+def att_force(q, goal, katt=.01):
+    return katt*(goal - q)
+
+def rep_force(q, laser_data, R=3, krep=.1):
+    # Se lista estiver vazia
+    if not laser_data:
+        return np.zeros(2)
+
+    laser_data = np.array(laser_data, dtype=float)
+
+    # Garante que tenha 3 colunas (x, y, r)
+    if laser_data.shape[1] == 2:
+        # adiciona uma coluna de zeros (raio)
+        laser_data = np.hstack([laser_data, np.zeros((laser_data.shape[0], 1))])
+
+    # Vetor posição relativa robô -> obstáculo
+    v = q - laser_data[:, :2]
+
+    # Distância ao obstáculo (menos o raio)
+    d = np.linalg.norm(v, axis=1) - laser_data[:, 2]
+    d = np.maximum(d, 1e-6)  # evita divisão por zero
+    d = d.reshape(-1, 1)
+
+    # Força repulsiva
+    rep = (1/d**2) * ((1/d) - (1/R)) * (v/d)
+
+    # Zera onde fora do raio de influência
+    rep[d.flatten() > R, :] = 0.0
+
+    # Retorna soma das forças
+    return krep * np.sum(rep, axis=0)
+
+
+def controle(laser_data,r,L):
+     # Controle simples de desvio
+        v, w = 0, 0
+        frente = int(len(laser_data) / 2)
+        lado_direito = int(len(laser_data) * 1 / 4)
+        lado_esquerdo = int(len(laser_data) * 3 / 4)
+
+        if laser_data[frente, 1] > 2:
+            v = .5
+            w = 0
+        elif laser_data[lado_direito, 1] > 1:
+            v = 0
+            w = np.deg2rad(-45)
+        elif laser_data[lado_esquerdo, 1] > 1:
+            v = 0
+            w = np.deg2rad(45)
+
+        # Modelo cinemático
+        wl = v / r - (w * L) / (2 * r)
+        wr = v / r + (w * L) / (2 * r)
+        
+        return wl,wr
+
+
+
+def controle_campos(word, goal_position, robot_pos, robot_ori, laser_data, r, L):
+    # constantes -> verificar
+    K_att = 50
+    REP_RADIUS = 0.6
+    REP_GAIN = 15
+
+    MAX_LINEAR_VEL = 0.8
+    MAX_ANGULAR_VEL = np.deg2rad(90)
+
+    LINEAR_GAIN = 0.25
+    ANGULAR_GAIN = 2.0
+    GOAL_TOL = 0.20
+
+    laser_global = transform_laser_to_global(laser_data, robot_pos, robot_ori)
+    f_att = att_force(robot_pos, goal_position,K_att)
+    f_rep = rep_force(robot_pos, laser_global, R = REP_RADIUS, krep = REP_GAIN)
+
+    f_total = f_att + f_rep
+
+    # CONTROLADOR DESAI ET AL. (1998) -> verificar se realmente está correto
+    xd, yd = f_total
+    theta = robot_ori[2]
+    d = L / 2.0  
+
+    J = np.array([
+        [np.cos(theta), np.sin(theta)],
+        [-np.sin(theta) / d, np.cos(theta) / d]
+    ])
+
+    v_cmd, w_cmd = J @ np.array([xd, yd])
+
+    v_cmd *= LINEAR_GAIN
+    w_cmd *= ANGULAR_GAIN
+
+    theta_d = np.arctan2(f_total[1], f_total[0])
+    erro_theta = np.arctan2(np.sin(theta_d - theta), np.cos(theta_d - theta))
+    if abs(erro_theta) > np.deg2rad(45):
+        v_cmd *= 0.25
+
+    v_cmd = np.clip(v_cmd, -MAX_LINEAR_VEL, MAX_LINEAR_VEL)
+    w_cmd = np.clip(w_cmd, -MAX_ANGULAR_VEL, MAX_ANGULAR_VEL)
+
+    # prev_v_cmd = v_cmd
+
+    # cinematica
+    v_r = (2.0 * v_cmd + w_cmd * L) / (2.0 * r)
+    v_l = (2.0 * v_cmd - w_cmd * L) / (2.0 * r)
+
+    return v_l, v_r
+
+# mexendo atualmente
 LOG_ODDS_MIN = -10.0
 LOG_ODDS_MAX = 10.0
 
@@ -101,7 +357,7 @@ def update_map_log_odds(log_odds_map, robot_pos, laser_data, l_occ = 0.9, l_free
                 log_odds_map[rr[1:], cc[1:]] += l_free
 
         # marcar a célula de impacto como ocupada
-        log_odds_map[posi_yGrid, posi_xGrid] += l_occ
+        # log_odds_map[posi_yGrid, posi_xGrid] += l_occ
 
     # clamp para estabilidade numérica
     np.clip(log_odds_map, LOG_ODDS_MIN, LOG_ODDS_MAX, out=log_odds_map)
@@ -155,7 +411,9 @@ l_wheel = sim.getObject(f'/{robotname}/wheel_left_drop_sensor/kobuki_leftMotor')
 r_wheel = sim.getObject(f'/{robotname}/wheel_right_drop_sensor/kobuki_rightMotor')
 hokuyo = HokuyoSensorSim(sim, f"/{robotname}/fastHokuyo")  # seu wrapper
 
-
+# funcoes a verificar
+world = pixel_to_world(30,34,100,10)
+goal_position = np.array([world[0], world[1]])
 
 # -----------------------
 # Config mapa / constantes
@@ -172,6 +430,12 @@ r = 0.0975
 
 hist = []            
 laser_global = []    
+
+
+# verifica se o robo chegou no objetivo e finaliza o loop
+    # if np.linalg.norm(goal_position - robot_pos) <= GOAL_TOL:
+    #     print("Objetivo alcancado.")
+    #     break
 
 
 
@@ -191,7 +455,7 @@ fig, ax = plt.subplots(figsize=(6,6))
 
 robot_path_world = []  # lista de (x,y) world coordinates
 
-for step in range(400):
+for step in range(1000):
     sim.step()
     # pos = sim.getObjectPosition(robot, -1)
     # ori = sim.getObjectOrientation(robot, -1)
@@ -219,12 +483,12 @@ for step in range(400):
         l_free
     )
 
-    log_odds_map = update_map_log_odds(log_odds_map, robot_pos, laser_data)
+    # log_odds_map = update_map_log_odds(log_odds_map, robot_pos, laser_data)
 
     # salvar rastro em coords do mundo
     robot_path_world.append((robot_pos[0], robot_pos[1]))
     
-    wl, wr =  controle(laser_raw,r,L)
+    wl, wr =  controle_campos(world, goal_position, np.array([pos[0], pos[1]]), ori, laser_data, r, L)
     sim.setJointTargetVelocity(l_wheel, wl)
     sim.setJointTargetVelocity(r_wheel, wr)
 
@@ -263,7 +527,11 @@ for step in range(400):
         ax.set_aspect('equal')
         plt.pause(0.001)
         
-        
+
+
+
+
+     
 
 # parar sim
 sim.stopSimulation()
