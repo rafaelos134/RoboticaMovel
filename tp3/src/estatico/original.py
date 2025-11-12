@@ -493,39 +493,75 @@ for step in range(1000):
     sim.setJointTargetVelocity(r_wheel, wr)
 
     if step % 50 == 0:
-        print("hi")
-        prob = 1.0 / (1.0 + np.exp(-log_odds_map))
-        grid_vis = np.zeros_like(prob)
-        grid_vis[prob < 0.3] = 1  # livre
-        grid_vis[prob > 0.7] = 2  # ocupado
+        # print("hi")
+        # prob = 1.0 / (1.0 + np.exp(-log_odds_map))
+        # grid_vis = np.zeros_like(prob)
+        # grid_vis[prob < 0.3] = 1  # livre
+        # grid_vis[prob > 0.7] = 2  # ocupado
 
-        # --- cálculo do extent ---
-        nrows, ncols = grid_vis.shape
-        extent = [grid_origin[0], grid_origin[0] + ncols * cell_size,
-                    grid_origin[1], grid_origin[1] + nrows * cell_size]
+        # # --- cálculo do extent ---
+        # nrows, ncols = grid_vis.shape
+        # extent = [grid_origin[0], grid_origin[0] + ncols * cell_size,
+        #             grid_origin[1], grid_origin[1] + nrows * cell_size]
 
-        # --- Atualização do plot ---
-        ax.clear()
-        ax.imshow(grid_vis, origin='lower', cmap=cmap, extent=extent, vmin=0, vmax=2)
+        # # --- Atualização do plot ---
+        # ax.clear()
+        # ax.imshow(grid_vis, origin='lower', cmap=cmap, extent=extent, vmin=0, vmax=2)
 
-        # desenhar rastro em coordenadas do mundo
-        if robot_path_world:
-            xs, ys = zip(*robot_path_world)
-            ax.plot(xs, ys, color='blue', linewidth=1)
+        # # desenhar rastro em coordenadas do mundo
+        # if robot_path_world:
+        #     xs, ys = zip(*robot_path_world)
+        #     ax.plot(xs, ys, color='blue', linewidth=1)
 
-        # desenhar pose do robô
-        arrow_scale = cell_size * 5
-        ax.arrow(robot_pos[0], robot_pos[1],
-                    arrow_scale*np.cos(robot_pos[2]), arrow_scale*np.sin(robot_pos[2]),
-                    head_width=cell_size*2, head_length=cell_size*2, fc='red', ec='red')
+        # # desenhar pose do robô
+        # arrow_scale = cell_size * 5
+        # ax.arrow(robot_pos[0], robot_pos[1],
+        #             arrow_scale*np.cos(robot_pos[2]), arrow_scale*np.sin(robot_pos[2]),
+        #             head_width=cell_size*2, head_length=cell_size*2, fc='red', ec='red')
 
         
         
-        ax.set_title(f"Mapa Parcial - passo {step}")
-        ax.set_xlim(extent[0], extent[1])
-        ax.set_ylim(extent[2], extent[3])
-        ax.set_aspect('equal')
-        plt.pause(0.001)
+        # ax.set_title(f"Mapa Parcial - passo {step}")
+        # ax.set_xlim(extent[0], extent[1])
+        # ax.set_ylim(extent[2], extent[3])
+        # ax.set_aspect('equal')
+        # plt.pause(0.001)
+
+        # -----------------------------------------------------------------
+        # Plot 2: Mapa de Grade (gera grid.png)
+        # (Este é o código corrigido e integrado)
+        # -----------------------------------------------------------------
+        print("Gerando Plot 2 (Mapa de Grid)...")
+
+        # Converter log-odds para probabilidade (sua fórmula está correta)
+        # 'log_odds_map' foi criada e atualizada no seu loop 'while'
+        prob = 1.0 / (1.0 + np.exp(-log_odds_map)) 
+
+        # Criar mapa visual (0=desconhecido, 1=livre, 2=ocupado)
+        grid_vis = np.zeros_like(prob, dtype=np.uint8) # 0 = desconhecido
+        grid_vis[prob < 0.45] = 1 # 1 = livre (branco)
+        grid_vis[prob > 0.55] = 2 # 2 = ocupado (preto)
+
+        # Definir um colormap: 0=cinza, 1=branco, 2=preto
+        # (Substitui a variável 'cmap' indefinida)
+        cmap = ListedColormap(['#808080', '#FFFFFF', '#000000'])
+
+        plt.ioff()
+        fig2, ax2 = plt.subplots(figsize=(7,7))
+
+        # Definir a 'extent' usando as variáveis de configuração do mapa
+        # (Substitui 'grid_origin', 'ncols', 'cell_size')
+        extent = [MAP_ORIGIN_X, MAP_ORIGIN_X + MAP_SIZE_X, 
+                MAP_ORIGIN_Y, MAP_ORIGIN_Y + MAP_SIZE_Y]
+                
+        ax2.imshow(grid_vis, origin='lower', cmap=cmap, extent=extent, vmin=0, vmax=2)
+
+        # Plotar a trajetória (usando 'hist' ao invés de 'robot_path_world')
+        if hist:
+            xs, ys = zip(*hist)
+            ax2.plot(xs, ys, color='blue', linewidth=1, label="Trajetória")
+            ax2.plot(xs[-1], ys[-1], 'ro', markersize=5, label="Fim") # Ponto final
+        plt.show()
         
 
 
@@ -568,7 +604,7 @@ plt.show()
 # Plot 2: Mapa de Grade (gera grid.png)
 # (Este é o código corrigido e integrado)
 # -----------------------------------------------------------------
-print("Gerando Plot 2 (Mapa de Grade)...")
+print("Gerando Plot 2 (Mapa de Grid)...")
 
 # Converter log-odds para probabilidade (sua fórmula está correta)
 # 'log_odds_map' foi criada e atualizada no seu loop 'while'
