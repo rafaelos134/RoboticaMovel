@@ -28,6 +28,12 @@ def pixel_to_world(x_px, y_px, img_size=64, world_size=10):
         y_world = (-(y_px - img_size/2) * scale) 
         return x_world, y_world
 
+
+
+
+
+
+
 # mexendo atualmente
 LOG_ODDS_MIN = -10.0
 LOG_ODDS_MAX = 10.0
@@ -64,78 +70,7 @@ def world_to_grid_xy(wx, wy):
         return ix, iy
     return None, None
 
-MAX_RANGE_THRESHOLD = MAX_SCAN_DISTANCE * 0.99
-# Calculo do log_odds (explicar no video)
-def update_map_log_odds(log_odds_map, robot_pos, laser_data, step, last_seen,
-                        l_occ=0.2, l_free=-0.7):
-    
-    x, y, theta_r = robot_pos[0], robot_pos[1], robot_pos[2]
-    x_Grid, y_Grid = world_to_grid_xy(x, y)
-    
-    if x_Grid is None or y_Grid is None:
-        return log_odds_map, last_seen
 
-    # Limiar para considerar uma célula como "fortemente ocupada"
-    # (Não apague células acima deste valor)
-    L_OCC_THRESHOLD = 3 
-    L_FREE_THRESHOLD = -3
-    
-    
-    for d, ang in laser_data:
-        if d <= 0.01: 
-            continue
-
-        global_ang = theta_r + ang
-        posi_x = x + d * np.cos(global_ang)
-        posi_y = y + d * np.sin(global_ang)
-        posi_xGrid, posi_yGrid = world_to_grid_xy(posi_x, posi_y)
-        
-        if posi_xGrid is None or posi_yGrid is None:
-            continue
-        
-        rr, cc = line(y_Grid, x_Grid, posi_yGrid, posi_xGrid)
-        
-        if len(rr) <= 1:
-            continue
-
-        # --- LÓGICA DE ATUALIZAÇÃO CORRIGIDA ---
-
-        # 1. Obter todas as células do feixe (exceto a do robô)
-        beam_rows, beam_cols = rr[1:], cc[1:]
-
-        # 2. Aplicar 'livre' (l_free) ao longo do feixe, EXCETO no ponto final
-        if len(beam_rows) > 1:
-            path_rows, path_cols = beam_rows[:-1], beam_cols[:-1]
-            
-            # Verificar o estado atual dessas células
-            current_log_odds = log_odds_map[path_rows, path_cols]
-            
-            # Criar uma máscara de células que NÃO estão fortemente ocupadas
-            free_or_unknown_mask = current_log_odds < L_OCC_THRESHOLD
-            
-            # Aplicar 'l_free' APENAS a essas células
-            rows_to_free = path_rows[free_or_unknown_mask]
-            cols_to_free = path_cols[free_or_unknown_mask]
-            log_odds_map[rows_to_free, cols_to_free] += l_free
-
-        # 3. Tratar o PONTO FINAL (a última célula do feixe)
-        end_row, end_col = beam_rows[-1], beam_cols[-1]
-        
-        if d < MAX_RANGE_THRESHOLD:
-            # if log_odds_map[end_row, end_col] > L_FREE_THRESHOLD:
-                log_odds_map[end_row, end_col] += l_occ
-        else:
-            # Feixe de Max Range -> Marcar ponto final como LIVRE
-            # (Também checando para não apagar um obstáculo)
-            # if log_odds_map[end_row, end_col] < L_OCC_THRESHOLD:
-                log_odds_map[end_row, end_col] += l_free
-
-        # 4. Atualizar o tempo de visão de todo o feixe
-        last_seen[rr, cc] = step
-
-    # Clamp para estabilidade
-    np.clip(log_odds_map, LOG_ODDS_MIN, LOG_ODDS_MAX, out=log_odds_map)
-    return log_odds_map, last_seen
 
 
 plt.ion() # Ligar modo interativo
@@ -203,16 +138,16 @@ robot_path_world = []  # lista de (x,y) world coordinates
 LIMITE_TEMPO_SIM = 20 * 60
 step = 0
 
+
+contorle = controleWallFollowing.Controlador()
+
 while sim.getSimulationState() != sim.simulation_stopped:
-    current_sim_time = sim.getSimulationTime()
 
     sim.step()
-
     step +=1
 
-    
     if step > 1000:
-        print(f"Tempo limite de {LIMITE_TEMPO_SIM}s atingido. Parando a simulação.")
+        print(f"Numero de passos maximo atingido. Parando a simulação.")
         break
 
     pos = sim.getObjectPosition(robot, sim.handle_world)
@@ -221,7 +156,7 @@ while sim.getSimulationState() != sim.simulation_stopped:
     
     hist.append([pos[0], pos[1]])
     
-    laser_data = hokuyo.getSensorData() # Retorna [ângulo, dist]
+    laser_data = hokuyo.getSensorData()
     laser_global.extend(HokuyoSensorSim.transform_laser_to_global(laser_data, pos, ori))
 
     robot_pos = [pos[0], pos[1], ori[2]]
@@ -234,18 +169,12 @@ while sim.getSimulationState() != sim.simulation_stopped:
         robot_pos,
         laser_data_swapped,
         step,
-        last_seen
-    )
+        last_seen)
     
-    # if step % 10 == 0:
-    #     unseen_mask = (step - last_seen) > 400
-    #     log_odds_map[unseen_mask] *= 0.995
-
-    # log_odds_map = update_map_log_odds(log_odds_map, robot_pos, laser_data)
-
+    
     # salvar rastro em coords do mundo
     robot_path_world.append((robot_pos[0], robot_pos[1]))
-    wl, wr = controleWallFollowing.controle_wall_following_com_escape(sim, robot, laser_data, r, L)
+    wl, wr = contorle.controle_wall_following_com_escape(sim, robot, laser_data, r, L)
     
     # wl, wr =  controle_campos(world, goal_position, np.array([pos[0], pos[1]]), ori, laser_data, r, L)
     sim.setJointTargetVelocity(l_wheel, wl)
@@ -392,5 +321,3 @@ except Exception as e:
 plt.close(fig2) # Fechar para liberar memória
 
 print("Plots finais salvos com sucesso. Script terminado.")
-# O plt.show() foi removido, o script agora salva e termina.
-# --- FIM DA MODIFICAÇÃO ---
