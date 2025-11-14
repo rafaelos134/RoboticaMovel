@@ -1,6 +1,6 @@
 import numpy as np
-import matplotlib          # <-- 1. Importe o matplotlib "principal"
-matplotlib.use("Qt5Agg")  # <-- 2. Defina o backend para TkAgg
+# import matplotlib          # <-- 1. Importe o matplotlib "principal"
+# matplotlib.use("Qt5Agg")  # <-- 2. Defina o backend para TkAgg
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import time
@@ -251,13 +251,12 @@ while sim.getSimulationState() != sim.simulation_stopped:
     sim.setJointTargetVelocity(l_wheel, wl)
     sim.setJointTargetVelocity(r_wheel, wr)
 
-    if step % 25 == 0: # Frequência de atualização aumentada
+    if step % 25 == 0:
         
-        # --- Limpa os eixos para redesenhar ---
         ax1.clear()
         ax2.clear()
 
-        # --- PLOT 1: Scatter (Pontos do Laser e Trajetória) ---
+        
         if hist:
             x, y = zip(*hist)
             ax1.plot(x, y, '--k', label="Trajetória")
@@ -265,7 +264,6 @@ while sim.getSimulationState() != sim.simulation_stopped:
             ax1.plot(x[-1], y[-1], 'ro', markersize=8, label="Atual")
 
         if laser_global:
-            # Plota apenas os últimos N pontos para performance
             points_to_plot = laser_global[-N_LASER_POINTS_PLOT:]
             lx, ly = zip(*points_to_plot)
             ax1.scatter(lx, ly, s=1, c='r', alpha=0.1, label=f"Laser (últimos {N_LASER_POINTS_PLOT})")
@@ -276,20 +274,19 @@ while sim.getSimulationState() != sim.simulation_stopped:
         ax1.set_aspect('equal')
         ax1.legend(fontsize='small')
         ax1.grid(True)
-        # Define limites fixos para o scatter plot não "pular"
+
         ax1.set_xlim(MAP_ORIGIN_X, MAP_ORIGIN_X + MAP_SIZE_X)
         ax1.set_ylim(MAP_ORIGIN_Y, MAP_ORIGIN_Y + MAP_SIZE_Y)
 
 
-        # --- PLOT 2: Mapa de Ocupação (Grid Map) ---
+        # Plot 2 OCCUPANCY GRID
         
-        # Converter log-odds para probabilidade
         prob = 1.0 / (1.0 + np.exp(-log_odds_map)) 
 
-        # Criar mapa visual (0=desconhecido, 1=livre, 2=ocupado)
-        grid_vis = np.zeros_like(prob, dtype=np.uint8) # 0 = desconhecido
-        grid_vis[prob < 0.45] = 1 # 1 = livre (branco)
-        grid_vis[prob > 0.55] = 2 # 2 = ocupado (preto)
+
+        grid_vis = np.zeros_like(prob, dtype=np.uint8)
+        grid_vis[prob < 0.45] = 1 
+        grid_vis[prob > 0.55] = 2 
                   
         ax2.imshow(grid_vis, origin='lower', cmap=cmap_vis, extent=map_extent, vmin=0, vmax=2)
 
@@ -305,11 +302,7 @@ while sim.getSimulationState() != sim.simulation_stopped:
         ax2.set_aspect('equal')
         ax2.legend(fontsize='small')
         
-        # --- ATUALIZA A JANELA ---
-        plt.pause(0.01) # Pausa rápida para a GUI processar eventos
-        # (Opcional, mas ajuda em alguns backends)
-        # fig.canvas.draw()
-        # fig.canvas.flush_events()
+        plt.pause(0.01) 
         
 
 
