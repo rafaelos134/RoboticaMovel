@@ -1,25 +1,23 @@
 import numpy as np
-import matplotlib          # <-- 1. Importe o matplotlib "principal"
-matplotlib.use("Qt5Agg")  # <-- 2. Defina o backend para TkAgg
+import matplotlib     
+matplotlib.use("Qt5Agg")  
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 import time
-import math 
 import networkx as nx
 import numpy as np
-from skimage.draw import line
+
 from matplotlib.colors import ListedColormap
 
+from coppeliasim_zmqremoteapi_client import RemoteAPIClient
+
+
+ 
+# funcoes em outros arquivos
 import HokuyoSensorSim
 import controleWallFollowing
+import logOdds
 
-from coppeliasim_zmqremoteapi_client import RemoteAPIClient 
-
-def Rz(theta):
-  
-    return np.array([[ np.cos(theta), -np.sin(theta), 0 ],
-                      [ np.sin(theta), np.cos(theta) , 0 ],
-                      [ 0            , 0             , 1 ]])
 
 
 def pixel_to_world(x_px, y_px, img_size=64, world_size=10):
@@ -55,20 +53,7 @@ LOG_ODDS_MIN = -5.0
 LOG_ODDS_MAX = 5.0
 
 
-def world_to_grid_xy(wx, wy):
-    
-    # Converte mundo (x,y) [m] -> índice de célula (ix, iy)
-    # origem está no centro do mapa 0,0
-    
-    ix = int((wx - MAP_ORIGIN_X) / MAP_RESOLUTION)
-    iy = int((wy - MAP_ORIGIN_Y) / MAP_RESOLUTION)
-    
-    # ix = int((ncols / 2) + (wx / cell_size)) # parentezes modificado, caso tenha problema rever
-    # iy = int((nrows / 2) + (wy / cell_size))
 
-    if 0 <= ix < ncols and 0 <= iy < nrows:
-        return ix, iy
-    return None, None
 
 
 
@@ -164,7 +149,7 @@ while sim.getSimulationState() != sim.simulation_stopped:
     
     laser_data_swapped = [[d, a] for a, d in laser_data]
         
-    log_odds_map, last_seen = update_map_log_odds(
+    log_odds_map, last_seen = logOdds.update_map_log_odds(
         log_odds_map,
         robot_pos,
         laser_data_swapped,
@@ -314,8 +299,7 @@ ax2.legend()
 
 # Salvar figura 2
 try:
-    fig2.savefig("occupancy_grid_final.png", dpi=600, bbox_inches='tight')
-    print("... 'occupancy_grid_final.png' salvo com 600 dpi.")
+    fig2.savefig("images/occupancy_grid_final.png", dpi=600, bbox_inches='tight')
 except Exception as e:
     print(f"Erro ao salvar o mapa de ocupação: {e}")
 plt.close(fig2) # Fechar para liberar memória
