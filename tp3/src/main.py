@@ -1,7 +1,5 @@
 import numpy as np
 import matplotlib
-# matplotlib.use("TkAgg")
-
 import matplotlib.pyplot as plt
 import numpy as np
 import time
@@ -134,10 +132,10 @@ def update_map_log_odds(log_odds_map, robot_pos, laser_data, step, last_seen,
     return log_odds_map, last_seen
 
 
-plt.ion() # Ligar modo interativo
-# Criar uma figura com 2 subplots (1 linha, 2 colunas)
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
-fig.suptitle("Mapeamento e Trajetória em Tempo Real", fontsize=16)
+# plt.ion() # Ligar modo interativo
+# # Criar uma figura com 2 subplots (1 linha, 2 colunas)
+# fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7))
+# fig.suptitle("Mapeamento e Trajetória em Tempo Real", fontsize=16)
 cmap_vis = ListedColormap(['#808080', '#FFFFFF', '#000000'])
 N_LASER_POINTS_PLOT = 1000 # Limite de pontos de laser para plotar (performance)
 map_extent = [MAP_ORIGIN_X, MAP_ORIGIN_X + MAP_SIZE_X, 
@@ -192,7 +190,7 @@ cmap = ListedColormap(["gray", "white", "black"])
 # Loop principal (visualização em metros)
 # -----------------------
 plt.ion()
-fig, ax = plt.subplots(figsize=(6,6))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12,6))
 
 robot_path_world = []  # lista de (x,y) world coordinates
 
@@ -210,7 +208,7 @@ while sim.getSimulationState() != sim.simulation_stopped:
     step +=1
 
     
-    if step > 1000:
+    if step > 100000000:
         print(f"Tempo limite de {LIMITE_TEMPO_SIM}s atingido. Parando a simulação.")
         break
 
@@ -250,58 +248,58 @@ while sim.getSimulationState() != sim.simulation_stopped:
     sim.setJointTargetVelocity(l_wheel, wl)
     sim.setJointTargetVelocity(r_wheel, wr)
 
-    if step % 25 == 0:
+    # if step % 25 == 0:
         
-        ax1.clear()
-        ax2.clear()
+    ax1.clear()
+    ax2.clear()
 
-        
-        if hist:
-            x, y = zip(*hist)
-            ax1.plot(x, y, '--k', label="Trajetória")
-            ax1.plot(x[0], y[0], 'go', markersize=8, label="Início")
-            ax1.plot(x[-1], y[-1], 'ro', markersize=8, label="Atual")
+    
+    if hist:
+        x, y = zip(*hist)
+        ax1.plot(x, y, '--k', label="Trajetória")
+        ax1.plot(x[0], y[0], 'go', markersize=8, label="Início")
+        ax1.plot(x[-1], y[-1], 'ro', markersize=8, label="Atual")
 
-        if laser_global:
-            points_to_plot = laser_global[-N_LASER_POINTS_PLOT:]
-            lx, ly = zip(*points_to_plot)
-            ax1.scatter(lx, ly, s=1, c='r', alpha=0.1, label=f"Laser (últimos {N_LASER_POINTS_PLOT})")
+    if laser_global:
+        points_to_plot = laser_global[-N_LASER_POINTS_PLOT:]
+        lx, ly = zip(*points_to_plot)
+        ax1.scatter(lx, ly, s=1, c='r', alpha=0.1, label=f"Laser (últimos {N_LASER_POINTS_PLOT})")
 
-        ax1.set_title(f"Plot de Pontos (Step {step})")
-        ax1.set_xlabel("X (m)")
-        ax1.set_ylabel("Y (m)")
-        ax1.set_aspect('equal')
-        ax1.legend(fontsize='small')
-        ax1.grid(True)
+    ax1.set_title(f"Plot de Pontos (Step {step})")
+    ax1.set_xlabel("X (m)")
+    ax1.set_ylabel("Y (m)")
+    ax1.set_aspect('equal')
+    ax1.legend(fontsize='small')
+    ax1.grid(True)
 
-        ax1.set_xlim(MAP_ORIGIN_X, MAP_ORIGIN_X + MAP_SIZE_X)
-        ax1.set_ylim(MAP_ORIGIN_Y, MAP_ORIGIN_Y + MAP_SIZE_Y)
-
-
-        # Plot 2 OCCUPANCY GRID
-        
-        prob = 1.0 / (1.0 + np.exp(-log_odds_map)) 
+    ax1.set_xlim(MAP_ORIGIN_X, MAP_ORIGIN_X + MAP_SIZE_X)
+    ax1.set_ylim(MAP_ORIGIN_Y, MAP_ORIGIN_Y + MAP_SIZE_Y)
 
 
-        grid_vis = np.zeros_like(prob, dtype=np.uint8)
-        grid_vis[prob < 0.45] = 1 
-        grid_vis[prob > 0.55] = 2 
-                  
-        ax2.imshow(grid_vis, origin='lower', cmap=cmap_vis, extent=map_extent, vmin=0, vmax=2)
+    # Plot 2 OCCUPANCY GRID
+    
+    prob = 1.0 / (1.0 + np.exp(-log_odds_map)) 
 
-        if hist:
-            xs, ys = zip(*hist)
-            ax2.plot(xs, ys, color='blue', linewidth=1, label="Trajetória")
-            ax2.plot(xs[0], ys[0], 'go', markersize=5, label="Início")
-            ax2.plot(xs[-1], ys[-1], 'ro', markersize=5, label="Atual")
 
-        ax2.set_title("Mapa de Ocupação (Log-Odds)")
-        ax2.set_xlabel("X (m)")
-        ax2.set_ylabel("Y (m)")
-        ax2.set_aspect('equal')
-        ax2.legend(fontsize='small')
-        
-        plt.pause(0.01) 
+    grid_vis = np.zeros_like(prob, dtype=np.uint8)
+    grid_vis[prob < 0.45] = 1 
+    grid_vis[prob > 0.55] = 2 
+                
+    ax2.imshow(grid_vis, origin='lower', cmap=cmap_vis, extent=map_extent, vmin=0, vmax=2)
+
+    if hist:
+        xs, ys = zip(*hist)
+        ax2.plot(xs, ys, color='blue', linewidth=1, label="Trajetória")
+        ax2.plot(xs[0], ys[0], 'go', markersize=5, label="Início")
+        ax2.plot(xs[-1], ys[-1], 'ro', markersize=5, label="Atual")
+
+    ax2.set_title("Mapa de Ocupação (Log-Odds)")
+    ax2.set_xlabel("X (m)")
+    ax2.set_ylabel("Y (m)")
+    ax2.set_aspect('equal')
+    ax2.legend(fontsize='small')
+    
+    plt.pause(0.01) 
         
 
 
@@ -312,7 +310,7 @@ print('Program ended')
 # --- MODIFICADO: LÓGICA DE PLOTAGEM FINAL ---
 
 # Fechar a janela interativa (fig) que estava aberta
-plt.close(fig) 
+# plt.close(fig) 
 plt.ioff() # Garantir que estamos em modo não-interativo para salvar
 
 print("Gerando plots finais com 600 dpi...")
