@@ -46,7 +46,6 @@ world = pixel_to_world(30,34,100,10)
 goal_position = np.array([world[0], world[1]])
 
 
-
 L = 0.381  
 r = 0.0975 
 
@@ -91,9 +90,11 @@ step = 0
 
 contorle = controleWallFollowing.Controlador()
 
+plt.ion()
+fig, ax = plt.subplots(figsize=(6,6))
 
-
-while sim.getSimulationState() != sim.simulation_stopped:
+while  sim.getSimulationState() != sim.simulation_stopped:
+    current_sim_time = sim.getSimulationTime()
 
     sim.step()
     step +=1
@@ -134,74 +135,124 @@ while sim.getSimulationState() != sim.simulation_stopped:
     sim.setJointTargetVelocity(l_wheel, wl)
     sim.setJointTargetVelocity(r_wheel, wr)
 
-    # frequencia de atualizacao do mapa
+#     # # frequencia de atualizacao do mapa
     if step % 25 == 0:
     
-        ax1.clear()
-        ax2.clear()
+        print("Gerando Plot 2 (Mapa de Grid)...")
 
-        # --- PLOT 1: Scatter e trajetoria ---
-        if hist and len(hist) > 1:
-            x, y = zip(*hist)
-            ax1.plot(x, y, '--k', label="Trajetória")
-            ax1.plot(x[0], y[0], 'go', markersize=8, label="Início")
-            ax1.plot(x[-1], y[-1], 'ro', markersize=8, label="Atual")
+        # Converter log-odds para probabilidade (sua fórmula está correta)
+        # 'log_odds_map' foi criada e atualizada no seu loop 'while'
+        prob = 1.0 / (1.0 + np.exp(-log_odds_map)) 
 
-        if laser_global and len(laser_global) > 0:
-            points_to_plot = laser_global[-N_LASER_POINTS_PLOT:]
-            lx, ly = zip(*points_to_plot)
-            ax1.scatter(lx, ly, s=1, c='r', alpha=0.1,
-                        label=f"Laser (últimos {N_LASER_POINTS_PLOT})")
+        # Criar mapa visual (0=desconhecido, 1=livre, 2=ocupado)
+        grid_vis = np.zeros_like(prob, dtype=np.uint8) # 0 = desconhecido
+        grid_vis[prob < 0.45] = 1 # 1 = livre (branco)
+        grid_vis[prob > 0.55] = 2 # 2 = ocupado (preto)
 
-        ax1.set_title(f"Plot de Pontos (Step {step})")
-        ax1.set_xlabel("X (m)")
-        ax1.set_ylabel("Y (m)")
-        ax1.set_aspect('equal')
-        ax1.legend(fontsize='small')
-        ax1.grid(True)
-        ax1.set_xlim(MAP_ORIGIN_X, MAP_ORIGIN_X + MAP_SIZE_X)
-        ax1.set_ylim(MAP_ORIGIN_Y, MAP_ORIGIN_Y + MAP_SIZE_Y)
+        # Definir um colormap: 0=cinza, 1=branco, 2=preto
+        # (Substitui a variável 'cmap' indefinida)
+        cmap = ListedColormap(['#808080', '#FFFFFF', '#000000'])
 
-        # --- PLOT 2: Grid Map ---
-        prob = 1.0 / (1.0 + np.exp(-log_odds_map))
-        grid_vis = np.zeros_like(prob, dtype=np.uint8)
-        grid_vis[prob < 0.45] = 1 # Célula livre (branco)
-        grid_vis[prob > 0.55] = 2 # Célula ocupada (preto)
-        # Células entre 0.45 e 0.55 permanecem 0 (cinza/desconhecido)
+        plt.ioff()
+        fig2, ax2 = plt.subplots(figsize=(7,7))
 
-        ax2.imshow(grid_vis, origin='lower', cmap=cmap_vis,
-                extent=map_extent, vmin=0, vmax=2)
+        # Definir a 'extent' usando as variáveis de configuração do mapa
+        # (Substitui 'grid_origin', 'ncols', 'cell_size')
+        extent = [MAP_ORIGIN_X, MAP_ORIGIN_X + MAP_SIZE_X, 
+                MAP_ORIGIN_Y, MAP_ORIGIN_Y + MAP_SIZE_Y]
+                
+        ax2.imshow(grid_vis, origin='lower', cmap=cmap, extent=extent, vmin=0, vmax=2)
 
-        if hist and len(hist) > 1:
+        # Plotar a trajetória (usando 'hist' ao invés de 'robot_path_world')
+        if hist:
             xs, ys = zip(*hist)
             ax2.plot(xs, ys, color='blue', linewidth=1, label="Trajetória")
-            ax2.plot(xs[0], ys[0], 'go', markersize=5, label="Início")
-            ax2.plot(xs[-1], ys[-1], 'ro', markersize=5, label="Atual")
+            ax2.plot(xs[-1], ys[-1], 'ro', markersize=5, label="Fim") # Ponto final
 
-        ax2.set_title("Mapa de Ocupação (Log-Odds)")
+        # (Removi ax2.arrow() pois 'robot_pos' não está disponível aqui,
+        # e o ponto final vermelho já marca a posição final)
+
+        ax2.set_title("Mapa Final Explorado")
         ax2.set_xlabel("X (m)")
         ax2.set_ylabel("Y (m)")
         ax2.set_aspect('equal')
-        ax2.legend(fontsize='small')
+        ax2.legend()
+        plt.show()
         
-        # --- CORREÇÃO PRINCIPAL ---
-        
-        # 1. ATUALIZE A TELA (ISTO É O CORRETO)
-        plt.pause(0.01)
-                
 
+
+
+
+     
 
 # parar sim
 sim.stopSimulation()
 print('Program ended')
 
-# --- SALVAR AS FIGURAS FINAIS AQUI ---
-print("Salvando imagens finais...")
-try:
-    fig1.savefig("scatter_plot_final.png", dpi=600, bbox_inches='tight')
-    # Certifique-se que a pasta "images" exista!
-    fig2.savefig("images/occupancy_grid_final.png", dpi=600, bbox_inches='tight')
-    print("Imagens salvas com sucesso.")
-except FileNotFoundError:
-    print("Erro: A pasta 'images/' não foi encontrada. Verifique o caminho.")
-    
+# # -----------------------------------------------------------------
+# # Plot 1: Scatter (o que você já tinha, gera laiser.png)
+# # (Este código é do seu original.py e está correto)
+# # -----------------------------------------------------------------
+# print("Gerando Plot 1 (Scatter)...")
+# fig1 = plt.figure(figsize=(8,8), dpi=100)
+# ax1 = fig1.add_subplot(111, aspect='equal')
+
+# # 'hist' é a variável do seu script original.py
+# x, y = zip(*hist)
+# ax1.plot(x, y, '--k', label="Trajetória")
+# ax1.plot(x[0], y[0], 'go', markersize=10, label="Início")
+# ax1.plot(x[-1], y[-1], 'ro', markersize=10, label="Fim")
+
+# # 'laser_global' é a variável do seu script original.py
+# if len(laser_global) > 0:
+#     lx, ly = zip(*laser_global)
+#     ax1.scatter(lx, ly, s=2, c='r', alpha=0.3, label="Laser")
+
+# ax1.legend()
+# ax1.set_xlabel("X [m]")
+# ax1.set_ylabel("Y [m]")
+# ax1.grid(True)
+# ax1.set_title("Plot de Pontos do Laser (Scatter)")
+# plt.show()
+
+
+# # -----------------------------------------------------------------
+# # Plot 2: Mapa de Grade (gera grid.png)
+# # (Este é o código corrigido e integrado)
+# # -----------------------------------------------------------------
+# print("Gerando Plot 2 (Mapa de Grade)...")
+
+# # Converter log-odds para probabilidade (sua fórmula está correta)
+# # 'log_odds_map' foi criada e atualizada no seu loop 'while'
+# prob = 1.0 / (1.0 + np.exp(-log_odds_map)) 
+
+# # Criar mapa visual (0=desconhecido, 1=livre, 2=ocupado)
+# grid_vis = np.zeros_like(prob, dtype=np.uint8) # 0 = desconhecido
+# grid_vis[prob < 0.45] = 1 # 1 = livre (branco)
+# grid_vis[prob > 0.55] = 2 # 2 = ocupado (preto)
+
+# # Definir um colormap: 0=cinza, 1=branco, 2=preto
+# # (Substitui a variável 'cmap' indefinida)
+# cmap = ListedColormap(['#808080', '#FFFFFF', '#000000'])
+
+# plt.ioff()
+# fig2, ax2 = plt.subplots(figsize=(7,7))
+
+# extent = [MAP_ORIGIN_X, MAP_ORIGIN_X + MAP_SIZE_X, 
+#           MAP_ORIGIN_Y, MAP_ORIGIN_Y + MAP_SIZE_Y]
+          
+# ax2.imshow(grid_vis, origin='lower', cmap=cmap, extent=extent, vmin=0, vmax=2)
+
+
+# if hist:
+#     xs, ys = zip(*hist)
+#     ax2.plot(xs, ys, color='blue', linewidth=1, label="Trajetória")
+#     ax2.plot(xs[-1], ys[-1], 'ro', markersize=5, label="Fim") # Ponto final
+
+
+# ax2.set_title("Mapa Final Explorado")
+# ax2.set_xlabel("X (m)")
+# ax2.set_ylabel("Y (m)")
+# ax2.set_aspect('equal')
+# ax2.legend()
+# plt.show()
