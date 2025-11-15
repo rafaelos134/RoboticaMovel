@@ -136,12 +136,12 @@ class Controlador:
         # Seguindo parede        
         elif self.state == "SEGUINDO":
             
-            # verificar qual o caso correto
-            if isinstance(laser_data, dict) and "ranges" in laser_data:
-                ranges = np.array(laser_data["ranges"], dtype=float)
-            else:
-                ranges = np.array(laser_data[:, 1], dtype=float)
-
+            # # verificar qual o caso correto
+            # if isinstance(laser_data, dict) and "ranges" in laser_data:
+            #     ranges = np.array(laser_data["ranges"], dtype=float)
+            # else:
+            #     ranges = np.array(laser_data[:, 1], dtype=float)
+            ranges = np.array(laser_data["ranges"], dtype=float)
             ranges = np.nan_to_num(ranges, posinf=100.0, neginf=0.0)
             num = len(ranges)
             
